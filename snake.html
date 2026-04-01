@@ -3,8 +3,6 @@
 <head>
 <title>Ultimate Snake</title>
 
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
 <style>
 body {
     margin: 0;
@@ -19,29 +17,39 @@ canvas {
     background: white;
     border: 4px solid white;
     box-shadow: 0 0 25px lime;
-    max-width: 95%;
 }
 
-/* 📱 MOBILE CONTROLS */
-#mobileControls {
-    margin-top: 10px;
+.overlay {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    font-weight: bold;
 }
 
-#mobileControls button {
-    font-size: 25px;
-    padding: 15px;
+#warningText {
+    top: 5px;
+    color: yellow;
+    display: none;
+}
+
+#gameOverText {
+    top: 45%;
+    font-size: 40px;
+    color: red;
+    display: none;
+}
+
+#highScoreFlash {
+    top: 15%;
+    font-size: 30px;
+    color: gold;
+    display: none;
+}
+
+button {
+    padding: 8px 12px;
     margin: 5px;
-    border-radius: 10px;
-    border: none;
-    background: rgba(0,0,0,0.6);
-    color: white;
-}
-
-/* hide on computer */
-@media (min-width: 768px) {
-    #mobileControls {
-        display: none;
-    }
+    cursor: pointer;
 }
 </style>
 </head>
@@ -50,74 +58,109 @@ canvas {
 
 <h1>🐍 Ultimate Snake</h1>
 
-<p>Score: <span id="score">0</span></p>
+<p>
+Score: <span id="score">0</span> |
+High Score: <span id="highScore">0</span>
+</p>
 
-<canvas id="gameCanvas"></canvas>
+<button onclick="restartGame()">🔄 Restart (R)</button>
 
-<!-- 📱 MOBILE BUTTONS -->
-<div id="mobileControls">
-    <button onclick="setDirection('up')">⬆️</button>
-    <div>
-        <button onclick="setDirection('left')">⬅️</button>
-        <button onclick="setDirection('down')">⬇️</button>
-        <button onclick="setDirection('right')">➡️</button>
-    </div>
+<div style="position:relative; display:inline-block;">
+<canvas id="gameCanvas" width="800" height="500"></canvas>
+
+<div id="warningText" class="overlay">⚠️ WARNING ⚠️</div>
+<div id="gameOverText" class="overlay">💀 GAME OVER</div>
+<div id="highScoreFlash" class="overlay">🏆 NEW HIGH SCORE!</div>
 </div>
+
+<audio id="eatSound" src="https://assets.mixkit.co/sfx/preview/mixkit-arcade-game-jump-coin-216.wav"></audio>
+<audio id="deathSound" src="https://assets.mixkit.co/sfx/preview/mixkit-player-losing-or-failing-2042.wav"></audio>
 
 <script>
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-// 📱 RESPONSIVE CANVAS
-function resizeCanvas(){
-    canvas.width = window.innerWidth * 0.95;
-    canvas.height = window.innerHeight * 0.6;
+const eatSound = document.getElementById("eatSound");
+const deathSound = document.getElementById("deathSound");
+
+let snake, dx, dy, food, score, gameRunning;
+let highScore = localStorage.getItem("highScore") || 0;
+document.getElementById("highScore").innerText = highScore;
+
+// START GAME
+function initGame(){
+    snake = [{x:400,y:250}];
+    dx = 0;
+    dy = 0;
+    food = spawnFood();
+    score = 0;
+    gameRunning = true;
+
+    document.getElementById("score").innerText = score;
+    document.getElementById("gameOverText").style.display = "none";
 }
-window.addEventListener("resize", resizeCanvas);
-resizeCanvas();
 
-// GAME
-let snake = [{x:200,y:200}];
-let dx = 10, dy = 0;
-let food = {x:100,y:100};
-let score = 0;
+function spawnFood(){
+    return {
+        x: Math.floor(Math.random()*80)*10,
+        y: Math.floor(Math.random()*50)*10
+    };
+}
 
-// 🎮 KEYBOARD CONTROLS
+// CONTROLS
 document.addEventListener("keydown", e=>{
+    if(e.key==="r" || e.key==="R"){
+        restartGame();
+    }
+
+    if(!gameRunning) return;
+
     if(e.key==="ArrowUp" && dy===0){dx=0;dy=-10;}
     if(e.key==="ArrowDown" && dy===0){dx=0;dy=10;}
     if(e.key==="ArrowLeft" && dx===0){dx=-10;dy=0;}
     if(e.key==="ArrowRight" && dx===0){dx=10;dy=0;}
 });
 
-// 📱 MOBILE CONTROLS
-function setDirection(dir){
-    if(dir==="up" && dy===0){dx=0;dy=-10;}
-    if(dir==="down" && dy===0){dx=0;dy=10;}
-    if(dir==="left" && dx===0){dx=-10;dy=0;}
-    if(dir==="right" && dx===0){dx=10;dy=0;}
-}
-
 // UPDATE
 function update(){
+    if(!gameRunning) return;
+
     let head = {x:snake[0].x+dx,y:snake[0].y+dy};
 
-    // 🌀 WALL WRAP
-    if(head.x<0) head.x = canvas.width-10;
-    if(head.x>=canvas.width) head.x = 0;
-    if(head.y<0) head.y = canvas.height-10;
-    if(head.y>=canvas.height) head.y = 0;
+    // WALL WRAP
+    if(head.x<0) head.x=790;
+    if(head.x>=800) head.x=0;
+    if(head.y<0) head.y=490;
+    if(head.y>=500) head.y=0;
+
+    // SELF COLLISION
+    for(let i=1;i<snake.length;i++){
+        if(head.x===snake[i].x && head.y===snake[i].y){
+            gameOver();
+            return;
+        }
+    }
 
     snake.unshift(head);
 
+    // FOOD
     if(head.x===food.x && head.y===food.y){
+        eatSound.currentTime = 0;
+        eatSound.play().catch(()=>{});
+
         score++;
         document.getElementById("score").innerText = score;
 
-        food = {
-            x: Math.floor(Math.random()*(canvas.width/10))*10,
-            y: Math.floor(Math.random()*(canvas.height/10))*10
-        };
+        // HIGH SCORE UPDATE
+        if(score > highScore){
+            highScore = score;
+            localStorage.setItem("highScore", highScore);
+            document.getElementById("highScore").innerText = highScore;
+
+            showHighScoreFlash();
+        }
+
+        food = spawnFood();
     } else {
         snake.pop();
     }
@@ -125,7 +168,7 @@ function update(){
 
 // DRAW
 function draw(){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.clearRect(0,0,800,500);
 
     ctx.fillStyle="red";
     ctx.fillRect(food.x,food.y,10,10);
@@ -134,11 +177,39 @@ function draw(){
     snake.forEach(s=>ctx.fillRect(s.x,s.y,10,10));
 }
 
-// LOOP
+// GAME LOOP
 setInterval(()=>{
     update();
     draw();
 },100);
+
+// GAME OVER
+function gameOver(){
+    gameRunning = false;
+
+    deathSound.currentTime = 0;
+    deathSound.play().catch(()=>{});
+
+    document.getElementById("gameOverText").style.display = "block";
+}
+
+// RESTART
+function restartGame(){
+    initGame();
+}
+
+// HIGH SCORE FLASH
+function showHighScoreFlash(){
+    const flash = document.getElementById("highScoreFlash");
+    flash.style.display = "block";
+
+    setTimeout(()=>{
+        flash.style.display = "none";
+    },1500);
+}
+
+// START FIRST GAME
+initGame();
 </script>
 
 </body>
