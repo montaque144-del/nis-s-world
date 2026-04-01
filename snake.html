@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Ultimate Snake</title>
+
+<style>
+body {
+    margin: 0;
+    text-align: center;
+    font-family: Arial;
+    color: white;
+    background-image: url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e');
+    background-size: cover;
+}
+
+canvas {
+    background: white;
+    border: 4px solid white;
+    box-shadow: 0 0 25px lime;
+}
+
+.overlay {
+    position: absolute;
+    font-size: 25px;
+    color: red;
+    display: none;
+    top: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+button {
+    padding: 8px 12px;
+    margin: 5px;
+    cursor: pointer;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🐍 Ultimate Snake</h1>
+
+<p>
+Score: <span id="score">0</span> |
+High Score: <span id="highScore">0</span> |
+Level: <span id="level">1</span>
+</p>
+
+<p>WASD / Arrows • SPACE Pause • R Restart</p>
+
+<!-- BUTTONS -->
+<button id="devBtn" onclick="toggleDev()" style="position:absolute; top:10px; right:10px;">🛠️ Dev Mode: OFF</button>
+<button id="musicBtn" onclick="toggleMusic()" style="position:absolute; top:50px; right:10px;">🎵 Music: ON</button>
+<button id="sfxBtn" onclick="toggleSFX()" style="position:absolute; top:90px; right:10px;">🔊 SFX: ON</button>
+
+<div style="position:relative; display:inline-block;">
+<canvas id="gameCanvas" width="800" height="500"></canvas>
+
+<div id="warningText" class="overlay">⚠️ TRAPS INCOMING ⚠️</div>
+<div id="laserWarning" class="overlay">⚠️ LASERS ⚠️</div>
+
+<div id="gameOverText" class="overlay" style="top:50%; font-size:40px;">💀 GAME OVER</div>
+<div id="pauseText" class="overlay" style="top:50%; font-size:40px;">⏸️ PAUSED</div>
+<div id="startText" class="overlay" style="top:50%; font-size:40px;">Press Any Key</div>
+</div>
+
+<br>
+
+<button onclick="restartGame()">🔄 Restart</button>
+<button onclick="goBack()">⬅ Back to Menu</button>
+
+<!-- AUDIO -->
+<audio id="eatSound" src="https://assets.mixkit.co/sfx/preview/mixkit-arcade-game-jump-coin-216.wav"></audio>
+<audio id="deathSound" src="https://assets.mixkit.co/sfx/preview/mixkit-player-losing-or-failing-2042.wav"></audio>
+<audio id="trapSound" src="https://assets.mixkit.co/sfx/preview/mixkit-warning-alarm-buzzer-991.wav"></audio>
+<audio id="laserSound" src="https://assets.mixkit.co/sfx/preview/mixkit-arcade-retro-changing-tab-206.wav"></audio>
+<audio id="pauseSound" src="https://assets.mixkit.co/sfx/preview/mixkit-select-click-1109.wav"></audio>
+<audio id="bgMusic" src="https://assets.mixkit.co/music/preview/mixkit-serene-view-443.mp3" loop></audio>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+// AUDIO
+const eatSound = document.getElementById("eatSound");
+const deathSound = document.getElementById("deathSound");
+const trapSound = document.getElementById("trapSound");
+const laserSound = document.getElementById("laserSound");
+const pauseSound = document.getElementById("pauseSound");
+const bgMusic = document.getElementById("bgMusic");
+bgMusic.volume = 0.2;
+
+// SETTINGS
+let devMode = false;
+let musicOn = true;
+let sfxOn = true;
+
+// GAME
+let snake, food, dx, dy, score, gameRunning, paused;
+let speed = 100, loop;
+let level = 1;
+let traps = [];
+let lasers = [];
+
+let highScore = localStorage.getItem("highScore") || 0;
+document.getElementById("highScore").innerText = highScore;
+
+let directionChanged = false;
+
+// TOGGLES
+function toggleDev(){
+    devMode = !devMode;
+    document.getElementById("devBtn").innerText =
+        "🛠️ Dev Mode: " + (devMode ? "ON" : "OFF");
+}
+
+function toggleMusic(){
+    musicOn = !musicOn;
+    let btn = document.getElementById("musicBtn");
+
+    if(musicOn){
+        bgMusic.play();
+        btn.innerText = "🎵 Music: ON";
+    } else {
+        bgMusic.pause();
+        btn.innerText = "🎵 Music: OFF";
+    }
+}
+
+function toggleSFX(){
+    sfxOn = !sfxOn;
+    document.getElementById("sfxBtn").innerText =
+        "🔊 SFX: " + (sfxOn ? "ON" : "OFF");
+}
+
+// INIT
+function init(){
+    snake = [{x:400,y:250}];
+    food = spawnFood();
+    traps = [];
+    lasers = [];
+    dx=0; dy=0;
+    score=0;
+    level=1;
+    speed=100;
+    gameRunning=false;
+    paused=false;
+    updateUI();
+    showOverlay("startText");
+}
+
+function updateUI(){
+    document.getElementById("score").innerText = score;
+    document.getElementById("level").innerText = level;
+}
+
+function spawnFood(){
+    return {
+        x: Math.floor(Math.random()*80)*10,
+        y: Math.floor(Math.random()*50)*10
+    };
+}
+
+function showOverlay(id){
+    ["warningText","laserWarning","gameOverText","pauseText","startText"]
+    .forEach(i=>document.getElementById(i).style.display="none");
+    if(id) document.getElementById(id).style.display="block";
+}
+
+// TRAPS
+function triggerTraps(){
+    showOverlay("warningText");
+    if(sfxOn){ trapSound.play(); }
+
+    setTimeout(()=>spawnTraps(),2000);
+}
+
+function spawnTraps(){
+    traps=[];
+    for(let i=0;i<7;i++){
+        traps.push({
+            x:Math.floor(Math.random()*80)*10,
+            y:Math.floor(Math.random()*50)*10
+        });
+    }
+
+    setTimeout(()=>traps=[],10000);
+    setTimeout(()=>{ if(score>=10) triggerTraps(); },15000);
+}
+
+// LASERS
+function triggerLasers(){
+    showOverlay("laserWarning");
+    if(sfxOn){ laserSound.play(); }
+
+    setTimeout(()=>spawnLasers(),2000);
+}
+
+function spawnLasers(){
+    lasers=[];
+    for(let i=0;i<4;i++){
+        if(Math.random()<0.5){
+            lasers.push({type:"horizontal",y:Math.floor(Math.random()*50)*10,active:false});
+        } else {
+            lasers.push({type:"vertical",x:Math.floor(Math.random()*80)*10,active:false});
+        }
+    }
+
+    window.laserWarningActive=true;
+
+    setTimeout(()=>{
+        lasers.forEach(l=>l.active=true);
+        window.laserWarningActive=false;
+    },2000);
+
+    setTimeout(()=>lasers=[],10000);
+    setTimeout(()=>{ if(score>=20) triggerLasers(); },20000);
+}
+
+// INPUT
+document.addEventListener("keydown", e=>{
+    if(e.key===" "){
+        paused=!paused;
+        if(sfxOn){ pauseSound.play(); }
+        showOverlay(paused?"pauseText":null);
+        return;
+    }
+
+    if(!gameRunning){
+        gameRunning=true;
+        showOverlay(null);
+        if(musicOn) bgMusic.play();
+    }
+
+    if(e.key==="w"||e.key==="ArrowUp"){dx=0;dy=-10;}
+    if(e.key==="s"||e.key==="ArrowDown"){dx=0;dy=10;}
+    if(e.key==="a"||e.key==="ArrowLeft"){dx=-10;dy=0;}
+    if(e.key==="d"||e.key==="ArrowRight"){dx=10;dy=0;}
+});
+
+// UPDATE
+function update(){
+    if(!gameRunning||paused) return;
+
+    let head={x:snake[0].x+dx,y:snake[0].y+dy};
+
+    // WALL WRAP
+    if(head.x<0) head.x=790;
+    if(head.x>=800) head.x=0;
+    if(head.y<0) head.y=490;
+    if(head.y>=500) head.y=0;
+
+    // TRAPS
+    for(let t of traps){
+        if(!devMode && head.x===t.x && head.y===t.y) return gameOver(head);
+    }
+
+    // LASERS
+    for(let l of lasers){
+        if(!devMode && l.active && (
+            (l.type==="horizontal" && head.y===l.y) ||
+            (l.type==="vertical" && head.x===l.x)
+        )) return gameOver(head);
+    }
+
+    snake.unshift(head);
+
+    if(head.x===food.x && head.y===food.y){
+        if(sfxOn){ eatSound.play(); }
+
+        score++;
+        if(score===10) triggerTraps();
+        if(score===20) triggerLasers();
+
+        food=spawnFood();
+        updateUI();
+    } else {
+        snake.pop();
+    }
+}
+
+// DRAW
+function draw(){
+    ctx.clearRect(0,0,800,500);
+
+    ctx.fillStyle="red";
+    ctx.fillRect(food.x,food.y,10,10);
+
+    ctx.fillStyle="black";
+    traps.forEach(t=>ctx.fillRect(t.x,t.y,10,10));
+
+    lasers.forEach(l=>{
+        ctx.fillStyle = (!l.active) ? "rgba(255,0,0,0.3)" : "red";
+        if(l.type==="horizontal"){
+            ctx.fillRect(0,l.y,800,5);
+        } else {
+            ctx.fillRect(l.x,0,5,500);
+        }
+    });
+
+    ctx.fillStyle="lime";
+    snake.forEach(s=>ctx.fillRect(s.x,s.y,10,10));
+}
+
+// LOOP
+function gameLoop(){
+    update();
+    draw();
+}
+loop=setInterval(gameLoop,100);
+
+// GAME OVER
+function gameOver(head){
+    gameRunning=false;
+    showOverlay("gameOverText");
+
+    if(sfxOn){ deathSound.play(); }
+
+    ctx.fillStyle="orange";
+    ctx.beginPath();
+    ctx.arc(head.x,head.y,20,0,Math.PI*2);
+    ctx.fill();
+
+    setTimeout(init,1500);
+}
+
+function restartGame(){ init(); }
+function goBack(){ window.location.href="index.html"; }
+
+init();
+</script>
+
+</body>
+</html>
