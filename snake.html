@@ -21,29 +21,12 @@ canvas {
 
 .overlay {
     position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    font-weight: bold;
-}
-
-#warningText {
-    top: 5px;
-    color: yellow;
-    display: none;
-}
-
-#gameOverText {
-    top: 45%;
-    font-size: 40px;
+    font-size: 25px;
     color: red;
     display: none;
-}
-
-#highScoreFlash {
-    top: 15%;
-    font-size: 30px;
-    color: gold;
-    display: none;
+    top: 5px;
+    left: 50%;
+    transform: translateX(-50%);
 }
 
 button {
@@ -63,18 +46,20 @@ Score: <span id="score">0</span> |
 High Score: <span id="highScore">0</span>
 </p>
 
-<button onclick="restartGame()">🔄 Restart (R)</button>
+<button id="devBtn" onclick="toggleDev()" style="position:absolute; top:10px; right:10px;">🛠️ Dev Mode: OFF</button>
+<button id="musicBtn" onclick="toggleMusic()" style="position:absolute; top:50px; right:10px;">🎵 Music: ON</button>
+<button id="sfxBtn" onclick="toggleSFX()" style="position:absolute; top:90px; right:10px;">🔊 SFX: ON</button>
 
 <div style="position:relative; display:inline-block;">
 <canvas id="gameCanvas" width="800" height="500"></canvas>
 
 <div id="warningText" class="overlay">⚠️ WARNING ⚠️</div>
-<div id="gameOverText" class="overlay">💀 GAME OVER</div>
-<div id="highScoreFlash" class="overlay">🏆 NEW HIGH SCORE!</div>
+<div id="gameOverText" class="overlay" style="top:50%; font-size:40px;">💀 GAME OVER</div>
 </div>
 
 <audio id="eatSound" src="https://assets.mixkit.co/sfx/preview/mixkit-arcade-game-jump-coin-216.wav"></audio>
 <audio id="deathSound" src="https://assets.mixkit.co/sfx/preview/mixkit-player-losing-or-failing-2042.wav"></audio>
+<audio id="bgMusic" src="https://assets.mixkit.co/music/preview/mixkit-serene-view-443.mp3" loop></audio>
 
 <script>
 const canvas = document.getElementById("gameCanvas");
@@ -82,91 +67,98 @@ const ctx = canvas.getContext("2d");
 
 const eatSound = document.getElementById("eatSound");
 const deathSound = document.getElementById("deathSound");
+const bgMusic = document.getElementById("bgMusic");
 
-let snake, dx, dy, food, score, gameRunning;
-let highScore = localStorage.getItem("highScore") || 0;
-document.getElementById("highScore").innerText = highScore;
+bgMusic.volume = 0.3;
 
-// START GAME
-function initGame(){
-    snake = [{x:400,y:250}];
-    dx = 0;
-    dy = 0;
-    food = spawnFood();
-    score = 0;
-    gameRunning = true;
+let audioUnlocked = false;
+let devMode = false;
+let musicOn = true;
+let sfxOn = true;
 
-    document.getElementById("score").innerText = score;
-    document.getElementById("gameOverText").style.display = "none";
+let snake = [{x:400,y:250}];
+let dx = 0, dy = 0;
+let food = {x:200,y:200};
+let score = 0;
+
+function unlockAudio(){
+    if(audioUnlocked) return;
+
+    eatSound.play().catch(()=>{});
+    eatSound.pause();
+    eatSound.currentTime = 0;
+
+    bgMusic.play().catch(()=>{});
+    bgMusic.pause();
+    bgMusic.currentTime = 0;
+
+    audioUnlocked = true;
 }
 
-function spawnFood(){
-    return {
-        x: Math.floor(Math.random()*80)*10,
-        y: Math.floor(Math.random()*50)*10
-    };
-}
-
-// CONTROLS
 document.addEventListener("keydown", e=>{
-    if(e.key==="r" || e.key==="R"){
-        restartGame();
-    }
+    unlockAudio();
 
-    if(!gameRunning) return;
+    if(!musicOn) bgMusic.pause();
+    else bgMusic.play().catch(()=>{});
 
-    if(e.key==="ArrowUp" && dy===0){dx=0;dy=-10;}
-    if(e.key==="ArrowDown" && dy===0){dx=0;dy=10;}
-    if(e.key==="ArrowLeft" && dx===0){dx=-10;dy=0;}
-    if(e.key==="ArrowRight" && dx===0){dx=10;dy=0;}
+    if(e.key==="ArrowUp") {dx=0;dy=-10;}
+    if(e.key==="ArrowDown") {dx=0;dy=10;}
+    if(e.key==="ArrowLeft") {dx=-10;dy=0;}
+    if(e.key==="ArrowRight") {dx=10;dy=0;}
 });
 
-// UPDATE
-function update(){
-    if(!gameRunning) return;
+function toggleDev(){
+    devMode = !devMode;
+    document.getElementById("devBtn").innerText =
+        "🛠️ Dev Mode: " + (devMode?"ON":"OFF");
+}
 
+function toggleMusic(){
+    musicOn = !musicOn;
+    let btn = document.getElementById("musicBtn");
+
+    if(musicOn){
+        bgMusic.play().catch(()=>{});
+        btn.innerText = "🎵 Music: ON";
+    } else {
+        bgMusic.pause();
+        btn.innerText = "🎵 Music: OFF";
+    }
+}
+
+function toggleSFX(){
+    sfxOn = !sfxOn;
+    document.getElementById("sfxBtn").innerText =
+        "🔊 SFX: " + (sfxOn?"ON":"OFF");
+}
+
+function update(){
     let head = {x:snake[0].x+dx,y:snake[0].y+dy};
 
-    // WALL WRAP
+    // wrap
     if(head.x<0) head.x=790;
     if(head.x>=800) head.x=0;
     if(head.y<0) head.y=490;
     if(head.y>=500) head.y=0;
 
-    // SELF COLLISION
-    for(let i=1;i<snake.length;i++){
-        if(head.x===snake[i].x && head.y===snake[i].y){
-            gameOver();
-            return;
-        }
-    }
-
     snake.unshift(head);
 
-    // FOOD
     if(head.x===food.x && head.y===food.y){
-        eatSound.currentTime = 0;
-        eatSound.play().catch(()=>{});
-
-        score++;
-        document.getElementById("score").innerText = score;
-
-        // HIGH SCORE UPDATE
-        if(score > highScore){
-            highScore = score;
-            localStorage.setItem("highScore", highScore);
-            document.getElementById("highScore").innerText = highScore;
-
-            showHighScoreFlash();
+        if(sfxOn){
+            eatSound.currentTime=0;
+            eatSound.play().catch(()=>{});
         }
-
-        food = spawnFood();
+        score++;
+        food = {
+            x:Math.floor(Math.random()*80)*10,
+            y:Math.floor(Math.random()*50)*10
+        };
+        document.getElementById("score").innerText = score;
     } else {
         snake.pop();
     }
 }
 
-// DRAW
 function draw(){
     ctx.clearRect(0,0,800,500);
 
@@ -177,39 +169,10 @@ function draw(){
     snake.forEach(s=>ctx.fillRect(s.x,s.y,10,10));
 }
 
-// GAME LOOP
 setInterval(()=>{
     update();
     draw();
 },100);
-
-// GAME OVER
-function gameOver(){
-    gameRunning = false;
-
-    deathSound.currentTime = 0;
-    deathSound.play().catch(()=>{});
-
-    document.getElementById("gameOverText").style.display = "block";
-}
-
-// RESTART
-function restartGame(){
-    initGame();
-}
-
-// HIGH SCORE FLASH
-function showHighScoreFlash(){
-    const flash = document.getElementById("highScoreFlash");
-    flash.style.display = "block";
-
-    setTimeout(()=>{
-        flash.style.display = "none";
-    },1500);
-}
-
-// START FIRST GAME
-initGame();
 </script>
 
 </body>
